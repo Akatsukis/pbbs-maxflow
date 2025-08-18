@@ -40,6 +40,7 @@ const float globUpdtFreq = 3.0;
 #include <iostream>
 #include <queue>
 #include <set>
+#include <array>
 
 #include <atomic>
 #include <mutex>

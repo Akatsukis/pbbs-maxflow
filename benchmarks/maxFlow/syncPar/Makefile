@@ -10,8 +10,8 @@ include parallelDefs
 GLOBAL_REQUIRE = utils.h parallel.h sequence.h graph.h blockRadixSort.h transpose.h stlParallelSort.h
 LOCAL_REQUIRE = 
 OBJS = maxFlow.o
-PCFLAGS := $(PCFLAGS) -std=c++11 -Wall -g
-PLFLAGS := $(PLFLAGS) -lpthread
+PCFLAGS := $(PCFLAGS) -std=c++20 -Wall -g 
+PLFLAGS := $(PLFLAGS) -lpthread -static-libgcc -static-libstdc++
 
 include ../common/timeRequiredFiles
 include MakeBench
