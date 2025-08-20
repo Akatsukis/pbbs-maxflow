@@ -57,6 +57,7 @@ void timeMaxFlow(FlowGraph<intT> g, int rounds, char* outFile) {
     cout << "source: " << g.source << " sink: " << g.sink << endl;
     FlowGraph<intT> gn = g.copy();
     double total_time = 0;
+    intT flow = 0;
     for (int i = 0; i <= rounds; i++) {
       if (i > 0) {
         gn.del();
@@ -64,11 +65,13 @@ void timeMaxFlow(FlowGraph<intT> g, int rounds, char* outFile) {
       }
 
       oldNWorkers = getWorkers();
-      cout << "Temporarily switching from " << oldNWorkers
+      if (oldNWorkers != 1) {
+        cout << "Temporarily switching from " << oldNWorkers
               << " to 32 threads" << endl;
-      setWorkers(32);
+        setWorkers(32);
+      }
       timer t; t.start();
-      intT flow = maxFlow(gn);
+      flow = maxFlow(gn);
       t.stop();
       cout << "round " << i << " maxFlow time: " << t.total() << " flow: " << flow << endl;
       if (i > 0) {
@@ -78,7 +81,7 @@ void timeMaxFlow(FlowGraph<intT> g, int rounds, char* outFile) {
     cout << "average time: " << total_time / rounds << endl;
     std::ofstream ofs("syncPar.tsv", std::ios::app);
     ofs << std::fixed << std::setprecision(6);
-    ofs << g.source << "\t" << g.sink << "\t" << total_time / rounds << endl;
+    ofs << g.source << "\t" << g.sink << "\t" << flow << "\t" << total_time / rounds << endl;
     ofs.close();
     if (outFile) {
       timer t; t.start();
