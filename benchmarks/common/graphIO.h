@@ -23,10 +23,17 @@
 #ifndef _BENCH_GRAPH_IO
 #define _BENCH_GRAPH_IO
 
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #include <iostream>
 #include <stdint.h>
 #include <cstring>
 #include <cassert>
+#include <vector>
 #include "parallel.h"
 #include "IO.h"
 
@@ -497,6 +504,63 @@ namespace benchIO {
       }
     }
 
+    parallel_for(long i = 0; i < n; ++i) {
+      v[i].Neighbors = adj + offsets[i];
+      v[i].nghWeights = weights + offsets[i];
+      v[i].degree = offsets[i + 1] - offsets[i];
+    }
+
+    return FlowGraph<intT>(wghGraph<intT>(v, n, m, adj, weights), -1, -1);
+  }
+
+  template<typename intT>
+  FlowGraph<intT> readBinaryGraph(char* fname) {
+    // Uses mmap to accelerate reading
+    struct stat sb;
+    int fd = open(fname, O_RDONLY);
+    if (fd == -1) {
+      std::cerr << "Error: Cannot open file " << fname << std::endl;
+      abort();
+    }
+    if (fstat(fd, &sb) == -1) {
+      std::cerr << "Error: Unable to acquire file stat" << std::endl;
+      abort();
+    }
+    char *data =
+        static_cast<char *>(mmap(0, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0));
+    size_t len = sb.st_size;
+    long n = reinterpret_cast<uint64_t *>(data)[0];
+    long m = reinterpret_cast<uint64_t *>(data)[1];
+    long sizes = reinterpret_cast<uint64_t *>(data)[2];
+    assert(sizes == (n + 1) * 8 + m * 4 + 3 * 8);
+    std::vector<uint64_t> offsets(n + 1);
+    std::vector<uint32_t> edges(m);
+    parallel_for(long i = 0; i < n + 1; ++i) {
+      offsets[i] = reinterpret_cast<uint64_t *>(data + 3 * 8)[i];
+    }
+    offsets[n] = m;
+    parallel_for(long i = 0; i < m; ++i) {
+      edges[i] = reinterpret_cast<uint32_t *>(data + 3 * 8 + (n + 1) * 8)[i];
+    }
+    if (data) {
+      const void *b = data;
+      munmap(const_cast<void *>(b), len);
+    }
+
+    intT* adj = newA(intT, m);
+    intT* weights = newA(intT, m);
+    wghVertex<intT>* v = newA(wghVertex<intT>, n);
+
+    constexpr intT WEIGHT_RANGE = 1 << 6;
+    intT l = 1, r = WEIGHT_RANGE;
+    intT range = r - l + 1;
+    parallel_for(long i=0; i < n; i++) {
+      for (size_t j = offsets[i]; j < offsets[i + 1]; j++) {
+        adj[j] = edges[j];
+        intT v = edges[j];
+        weights[j] = ((utils::hash(i) ^ utils::hash(v)) % range) + l;
+      }
+    }
 
     parallel_for(long i = 0; i < n; ++i) {
       v[i].Neighbors = adj + offsets[i];
@@ -518,6 +582,8 @@ namespace benchIO {
     std::string subfix = filename.substr(idx + 1);
     if (subfix == "adj") {
       return readPBBSGraph<intT>(fname);
+    } else if (subfix == "bin") {
+      return readBinaryGraph<intT>(fname);
     } else {
       std::cerr << "Error: Invalid graph extension" << std::endl;
       abort();

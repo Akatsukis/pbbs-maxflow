@@ -54,7 +54,9 @@ void timeMaxFlow(FlowGraph<intT> g, int rounds, char* outFile) {
   for (int i = 0; i < num_sources; i++) {
     g.source = utils::hash(i) % g.g.n;
     g.sink = utils::hash(i + num_sources) % g.g.n;
+    cout << "source: " << g.source << " sink: " << g.sink << endl;
     FlowGraph<intT> gn = g.copy();
+    double total_time = 0;
     for (int i = 0; i <= rounds; i++) {
       if (i > 0) {
         gn.del();
@@ -62,14 +64,22 @@ void timeMaxFlow(FlowGraph<intT> g, int rounds, char* outFile) {
       }
 
       oldNWorkers = getWorkers();
-      // cout << "Temporarily switching from " << oldNWorkers
-      //         << " to 32 threads" << endl;
-      // setWorkers(32);
+      cout << "Temporarily switching from " << oldNWorkers
+              << " to 32 threads" << endl;
+      setWorkers(32);
       timer t; t.start();
-      maxFlow(gn);
+      intT flow = maxFlow(gn);
       t.stop();
-      cout << "round " << i << " maxFlow time: " << t.total() << endl;
+      cout << "round " << i << " maxFlow time: " << t.total() << " flow: " << flow << endl;
+      if (i > 0) {
+        total_time += t.total();
+      }
     }
+    cout << "average time: " << total_time / rounds << endl;
+    std::ofstream ofs("syncPar.tsv", std::ios::app);
+    ofs << std::fixed << std::setprecision(6);
+    ofs << g.source << "\t" << g.sink << "\t" << total_time / rounds << endl;
+    ofs.close();
     if (outFile) {
       timer t; t.start();
       ofstream out(outFile, ofstream::binary);
@@ -93,5 +103,9 @@ int main(int argc, char* argv[]) {
   cout << "reading time: " << t.total() << endl;
   printf("number of vertices = %d\n", g.g.n);
   printf("number of edges = %u\n", g.g.m);
+  std::ofstream ofs("syncPar.tsv", std::ios::app);
+  ofs << std::fixed << std::setprecision(6);
+  ofs << iFile << "\t" << g.g.n << "\t" << g.g.m << endl;
+  ofs.close();
   timeMaxFlow(g, rounds, oFile);
 }
