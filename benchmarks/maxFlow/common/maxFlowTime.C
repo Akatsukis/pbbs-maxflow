@@ -37,6 +37,8 @@
 using namespace std;
 using namespace benchIO;
 
+constexpr int num_sources = 5;
+
 int oldNWorkers;
 void beforeHook() {
   cout << "Switching back to " << oldNWorkers << " threads" << endl;
@@ -49,25 +51,32 @@ void afterHook() {
 }
 
 void timeMaxFlow(FlowGraph<intT> g, int rounds, char* outFile) {
-  FlowGraph<intT> gn = g.copy();
-  for (int i = 0; i < rounds; i++) {
-    if (i > 0) {
-      gn.del();
-      gn = g.copy();
-    }
+  for (int i = 0; i < num_sources; i++) {
+    g.source = utils::hash(i) % g.g.n;
+    g.sink = utils::hash(i + num_sources) % g.g.n;
+    FlowGraph<intT> gn = g.copy();
+    for (int i = 0; i <= rounds; i++) {
+      if (i > 0) {
+        gn.del();
+        gn = g.copy();
+      }
 
-    oldNWorkers = getWorkers();
-    cout << "Temporarily switching from " << oldNWorkers
-            << " to 32 threads" << endl;
-    setWorkers(32);
-    maxFlow(gn);
-  }
-  if (outFile) {
-    timer t; t.start();
-    ofstream out(outFile, ofstream::binary);
-    writeFlowGraph(out, gn);
-    t.stop();
-    cout << "writing time: " << t.total() << endl;
+      oldNWorkers = getWorkers();
+      // cout << "Temporarily switching from " << oldNWorkers
+      //         << " to 32 threads" << endl;
+      // setWorkers(32);
+      timer t; t.start();
+      maxFlow(gn);
+      t.stop();
+      cout << "round " << i << " maxFlow time: " << t.total() << endl;
+    }
+    if (outFile) {
+      timer t; t.start();
+      ofstream out(outFile, ofstream::binary);
+      writeFlowGraph(out, gn);
+      t.stop();
+      cout << "writing time: " << t.total() << endl;
+    }
   }
 }
 
@@ -75,13 +84,14 @@ int main(int argc, char* argv[]) {
   commandLine P(argc,argv,"[-o <outFile>] [-r <rounds>] <inFile>");
   char* iFile = P.getArgument(0);
   char* oFile = P.getOptionValue("-o");
-  int rounds = P.getOptionIntValue("-r",1);
-  intT S, T;
+  int rounds = P.getOptionIntValue("-r",5);
+  // intT S, T;
   timer t;
   t.start();
-  ifstream in(iFile, ifstream::binary);
-  FlowGraph<intT> g = readFlowGraph<intT>(in);
+  FlowGraph<intT> g = readGraph<intT>(iFile);
   t.stop();
   cout << "reading time: " << t.total() << endl;
+  printf("number of vertices = %d\n", g.g.n);
+  printf("number of edges = %u\n", g.g.m);
   timeMaxFlow(g, rounds, oFile);
 }

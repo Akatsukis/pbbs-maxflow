@@ -26,6 +26,7 @@
 #include <iostream>
 #include <stdint.h>
 #include <cstring>
+#include <cassert>
 #include "parallel.h"
 #include "IO.h"
 
@@ -453,6 +454,74 @@ namespace benchIO {
     free(edges);
     free(pos);
     return FlowGraph<intT>(wghGraph<intT>(v, n, m, adj, weights), S, T);
+  }
+
+  template<typename intT>
+  FlowGraph<intT> readPBBSGraph(char* fname) {
+    _seq<char> S = readStringFromFile(fname);
+    words W = stringToWords(S.A, S.n);
+    long n = atol(W.Strings[1]);
+    long m = atol(W.Strings[2]);
+    bool weighted_input = false;
+    if (W.Strings[0] == WghAdjGraphHeader) {
+      weighted_input = true;
+      assert(W.m == n + m + m + 3);
+    } else if (W.Strings[0] == AdjGraphHeader) {
+      weighted_input = false;
+      assert(W.m == n + m + 3);
+    } else {
+      std::cerr << "Unrecognized header" << std::endl;
+      abort();
+    }
+
+    intT* offsets = newA(intT, n+1);
+    intT* adj = newA(intT, m);
+    intT* weights = newA(intT, m);
+    wghVertex<intT>* v = newA(wghVertex<intT>, n);
+
+    {parallel_for(long i=0; i < n; i++) offsets[i] = atol(W.Strings[i+3]);}
+    offsets[n] = m;
+    {parallel_for(long i=0; i < m; i++) adj[i] = atol(W.Strings[n+i+3]);}
+
+    if (weighted_input) {
+      {parallel_for(long i=0; i < m; i++) weights[i] = atol(W.Strings[n+m+i+3]);}
+    } else {
+      constexpr intT WEIGHT_RANGE = 1 << 6;
+      intT l = 1, r = WEIGHT_RANGE;
+      intT range = r - l + 1;
+      parallel_for(long i=0; i < n; i++) {
+        for (long j = offsets[i]; j < offsets[i + 1]; j++) {
+          intT v = adj[j];
+          weights[j] = ((utils::hash(i) ^ utils::hash(v)) % range) + l;
+        }
+      }
+    }
+
+
+    parallel_for(long i = 0; i < n; ++i) {
+      v[i].Neighbors = adj + offsets[i];
+      v[i].nghWeights = weights + offsets[i];
+      v[i].degree = offsets[i + 1] - offsets[i];
+    }
+
+    return FlowGraph<intT>(wghGraph<intT>(v, n, m, adj, weights), -1, -1);
+  }
+
+  template<typename intT>
+  FlowGraph<intT> readGraph(char* fname) {
+    string filename = string(fname);
+    size_t idx = filename.find_last_of('.');
+    if (idx == std::string::npos) {
+      std::cerr << "Error: No graph extension provided" << std::endl;
+      abort();
+    }
+    std::string subfix = filename.substr(idx + 1);
+    if (subfix == "adj") {
+      return readPBBSGraph<intT>(fname);
+    } else {
+      std::cerr << "Error: Invalid graph extension" << std::endl;
+      abort();
+    }
   }
 };
 
